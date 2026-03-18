@@ -1,40 +1,57 @@
 import websocket
 import json
+import threading
+import time
 
 class FlattradeWS:
+    def __init__(self, uid, token, on_message_callback=None):
+        self.uid = uid
+        self.token = token
+        self.on_message_callback = on_message_callback
+        self.ws = websocket.WebSocketApp(
+            "wss://piconnect.flattrade.in/PiConnectWSAPI/",
+            on_open=self._on_open,
+            on_message=self._on_message,
+            on_close=self._on_close,
+            on_error=self._on_error
+        )
+        self._thread = None
 
-def __init__(self, uid, token):
-    self.uid = uid
-    self.token = token
-    self.ws = websocket.WebSocketApp(
-        "wss://piconnect.flattrade.in/PiConnectWSAPI/",
-        on_open=self.on_open,
-        on_message=self.on_message
-    )
+    def _on_open(self, ws):
+        login = {
+            "t": "c",
+            "uid": self.uid,
+            "actid": self.uid,
+            "source": "API",
+            "susertoken": self.token
+        }
+        ws.send(json.dumps(login))
 
-def on_open(self, ws):
+    def subscribe(self, exchange, token_id):
+        # token_id example: "26000"
+        sub = {"t": "t", "k": f"{exchange}|{token_id}"}
+        self.ws.send(json.dumps(sub))
 
-    login = {
-        "t": "c",
-        "uid": self.uid,
-        "actid": self.uid,
-        "source": "API",
-        "susertoken": self.token
-    }
+    def _on_message(self, ws, message):
+        if self.on_message_callback:
+            self.on_message_callback(message)
+        else:
+            print("WS MSG:", message)
 
-    ws.send(json.dumps(login))
+    def _on_close(self, ws, code, reason):
+        print("WS closed", code, reason)
 
-def subscribe(self, exchange, token):
+    def _on_error(self, ws, error):
+        print("WS error", error)
 
-    sub = {
-        "t": "t",
-        "k": f"{exchange}|{token}"
-    }
+    def start(self):
+        self._thread = threading.Thread(target=self.ws.run_forever, daemon=True)
+        self._thread.start()
+        # small wait to let socket open
+        time.sleep(0.5)
 
-    self.ws.send(json.dumps(sub))
-
-def on_message(self, ws, message):
-    print(message)
-
-def connect(self):
-    self.ws.run_forever()
+    def stop(self):
+        try:
+            self.ws.close()
+        except Exception:
+            pass
