@@ -518,10 +518,16 @@ def broker_callback(broker, para=None):
             forward_url = "broker.html"
 
     elif broker == "flattrade":
-        code = request.args.get("code")
-        client = request.args.get("client")  # Flattrade returns client ID as well
-        logger.debug(f"Flattrade broker - The code is {code} for client {client}")
-        auth_token, error_message = auth_function(code)  # Only pass the code parameter
+
+    code = request.args.get("code")
+    client = request.args.get("client")
+
+    logger.info(f"Flattrade login callback code={code} client={client}")
+
+    auth_token, uid, error_message = auth_function(code, client)
+
+    if auth_token:
+        session["flattrade_uid"] = uid
         forward_url = "broker.html"
 
     elif broker == "kotak":
