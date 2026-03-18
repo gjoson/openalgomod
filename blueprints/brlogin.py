@@ -519,16 +519,25 @@ def broker_callback(broker, para=None):
 
     elif broker == "flattrade":
 
-    code = request.args.get("code")
-    client = request.args.get("client")
+        code = request.args.get("code")
+        client = request.args.get("client")
 
-    logger.info(f"Flattrade login callback code={code} client={client}")
+        logger.info(f"Flattrade login callback code={code} client={client}")
 
-    auth_token, uid, error_message = auth_function(code, client)
+        # auth_function comes from app.broker_auth_functions lookup earlier
+        # Make sure the registered auth function accepts (code, client) and returns (token, uid, error)
+        auth_token, uid, error_message = auth_function(code, client)
 
-    if auth_token:
-        session["flattrade_uid"] = uid
         forward_url = "broker.html"
+
+        if auth_token:
+            # Store only non-sensitive flags in session; store credentials persistently if needed
+            session["flattrade_uid"] = uid
+            session["flattrade_jKey"] = auth_token
+            # If the app uses handle_auth_success, call it so the rest of the app updates
+            return handle_auth_success(auth_token, session["user"], broker)
+        else:
+            return handle_auth_failure(error_message or "Flattrade auth failed", forward_url=forward_url)"
 
     elif broker == "kotak":
         logger.debug(f"Kotak broker - The Broker is {broker}")
