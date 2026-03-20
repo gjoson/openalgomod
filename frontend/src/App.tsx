@@ -1,10 +1,11 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { Providers } from '@/app/providers'
 import { AuthSync } from '@/components/auth/AuthSync'
 import { FullWidthLayout } from '@/components/layout/FullWidthLayout'
 import { Layout } from '@/components/layout/Layout'
 import { PageLoader } from '@/components/ui/page-loader'
+import { useBrokerStore } from '@/stores/brokerStore'
 
 // Lazy load all pages for code splitting
 // Public pages
@@ -87,6 +88,18 @@ const ConfigureChartinkSymbols = lazy(() => import('@/pages/chartink/ConfigureCh
 const FlowIndex = lazy(() => import('@/pages/flow/FlowIndex'))
 const FlowEditor = lazy(() => import('@/pages/flow/FlowEditor'))
 const FlowKeyboardShortcuts = lazy(() => import('@/pages/flow/FlowKeyboardShortcuts'))
+
+// Leverage page (crypto brokers only)
+const Leverage = lazy(() => import('@/pages/Leverage'))
+
+/** Route guard: only renders children if leverage_config is true, else redirects to dashboard */
+function LeverageRoute() {
+  const capabilities = useBrokerStore((s) => s.capabilities)
+  if (!capabilities?.leverage_config) {
+    return <Navigate to="/dashboard" replace />
+  }
+  return <Leverage />
+}
 
 // Admin pages
 const AdminIndex = lazy(() => import('@/pages/admin/AdminIndex'))
@@ -190,6 +203,8 @@ function App() {
                 {/* Flow Editor */}
                 <Route path="/flow" element={<FlowIndex />} />
                 <Route path="/flow/shortcuts" element={<FlowKeyboardShortcuts />} />
+                {/* Leverage Configuration (crypto brokers only) */}
+                <Route path="/leverage" element={<LeverageRoute />} />
                 {/* Phase 7: Admin */}
                 <Route path="/admin" element={<AdminIndex />} />
                 <Route path="/admin/freeze" element={<FreezeQty />} />
