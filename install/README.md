@@ -10,7 +10,7 @@
 - Minimum 2GB RAM (script will configure swap if needed)
 - Clean installation recommended
 
-### Domain and DNS Setup (Required)
+### Domain and DNS Setup (Recommended)
 1. **Cloudflare Account Setup**
    - Create a Cloudflare account if you don't have one
    - Add your domain to Cloudflare
@@ -74,6 +74,29 @@ chmod +x install.sh
 ```bash
 # Execute the installation script
 sudo ./install.sh
+```
+
+> You can now use either:
+> - a domain/subdomain (HTTPS + Let's Encrypt), or
+> - a public IPv4 address (HTTP mode, no SSL certificate).
+
+### Install from Your Own Fork/Branch (Optional)
+If you want to install a modified repository instead of the upstream default, set these
+environment variables before running the installer:
+
+```bash
+export OPENALGO_REPO_URL="https://github.com/<your-user>/<your-repo>.git"
+export OPENALGO_REPO_BRANCH="<your-branch>"  # Optional
+sudo ./install.sh
+```
+
+For Docker helper scripts, you can override image and sample env source:
+
+```bash
+export OPENALGO_IMAGE="<your-image>:<tag>"
+export OPENALGO_SAMPLE_ENV_URL="https://raw.githubusercontent.com/<your-user>/<your-repo>/<branch>/.sample.env"
+./docker-run.sh setup
+./docker-run.sh start
 ```
 
 The script will interactively prompt you for:

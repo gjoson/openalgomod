@@ -19,6 +19,9 @@ echo -e "${NC}"
 
 # OpenAlgo Installation and Configuration Script
 
+# Repository configuration (can be overridden via environment variables)
+REPO_URL="${OPENALGO_REPO_URL:-https://github.com/marketcalls/openalgo.git}"
+REPO_BRANCH="${OPENALGO_REPO_BRANCH:-}"
 
 
 # Create logs directory if it doesn't exist
@@ -349,9 +352,16 @@ while true; do
         log_message "Error: Domain name is required" "$RED"
         continue
     fi
+    # Accept either a domain name or a public IPv4 address
+    if [[ $DOMAIN =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        IS_IP_ADDRESS=true
+        IS_SUBDOMAIN=false
+        break
+    fi
+
     # Domain validation that accepts subdomains
     if [[ ! $DOMAIN =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$ ]]; then
-        log_message "Error: Invalid domain format. Please enter a valid domain name" "$RED"
+        log_message "Error: Invalid domain format. Please enter a valid domain name or public IPv4 address" "$RED"
         continue
     fi
 
@@ -361,6 +371,7 @@ while true; do
     else
         IS_SUBDOMAIN=false
     fi
+    IS_IP_ADDRESS=false
     break
 done
 
@@ -379,7 +390,11 @@ done
 
 # Show redirect URL for broker setup
 log_message "\nRedirect URL for broker developer portal:" "$YELLOW"
-log_message "https://$DOMAIN/$BROKER_NAME/callback" "$GREEN"
+if [ "$IS_IP_ADDRESS" = true ]; then
+    log_message "http://$DOMAIN/$BROKER_NAME/callback" "$GREEN"
+else
+    log_message "https://$DOMAIN/$BROKER_NAME/callback" "$GREEN"
+fi
 log_message "\nPlease use this URL in your broker's developer portal to generate API credentials." "$BLUE"
 log_message "Once you have the credentials, you can proceed with the installation." "$BLUE"
 echo ""
@@ -561,9 +576,10 @@ case "$OS_TYPE" in
         ;;
 esac
 
-# Install Certbot
-log_message "\nInstalling Certbot..." "$BLUE"
-case "$OS_TYPE" in
+if [ "$IS_IP_ADDRESS" = false ]; then
+    # Install Certbot
+    log_message "\nInstalling Certbot..." "$BLUE"
+    case "$OS_TYPE" in
     ubuntu | debian | raspbian)
         # Wait for any running package manager operations to complete
         wait_for_dpkg_lock
@@ -613,18 +629,21 @@ case "$OS_TYPE" in
             exit 1
         fi
         ;;
-    arch)
-        sudo pacman -Sy --noconfirm --needed certbot certbot-nginx
-        check_status "Failed to install Certbot"
-        ;;
-esac
+        arch)
+            sudo pacman -Sy --noconfirm --needed certbot certbot-nginx
+            check_status "Failed to install Certbot"
+            ;;
+    esac
 
-# Verify certbot is accessible
-if ! command -v certbot >/dev/null 2>&1; then
-    log_message "Error: Certbot installation failed - command not found" "$RED"
-    exit 1
+    # Verify certbot is accessible
+    if ! command -v certbot >/dev/null 2>&1; then
+        log_message "Error: Certbot installation failed - command not found" "$RED"
+        exit 1
+    fi
+    log_message "Certbot installed successfully" "$GREEN"
+else
+    log_message "IP mode detected - skipping Certbot/SSL installation." "$YELLOW"
 fi
-log_message "Certbot installed successfully" "$GREEN"
 
 # Check and handle existing OpenAlgo installation
 handle_existing "$BASE_PATH" "installation directory" "OpenAlgo directory for $DEPLOY_NAME"
@@ -636,7 +655,11 @@ check_status "Failed to create base directory"
 
 # Clone repository
 log_message "\nCloning OpenAlgo repository..." "$BLUE"
-sudo git clone https://github.com/marketcalls/openalgo.git $OPENALGO_PATH
+if [ -n "$REPO_BRANCH" ]; then
+    sudo git clone --branch "$REPO_BRANCH" --single-branch "$REPO_URL" "$OPENALGO_PATH"
+else
+    sudo git clone "$REPO_URL" "$OPENALGO_PATH"
+fi
 check_status "Failed to clone OpenAlgo repository"
 
 # Create virtual environment using uv
@@ -701,9 +724,15 @@ if is_xts_broker "$BROKER_NAME"; then
     sudo sed -i "s|YOUR_BROKER_MARKET_API_SECRET|$BROKER_API_SECRET_MARKET|g" $OPENALGO_PATH/.env
 fi
 
-sudo sed -i "s|http://127.0.0.1:5000|https://$DOMAIN|g" $OPENALGO_PATH/.env
-# Explicitly set HOST_SERVER in case the default value didn't match
-sudo sed -i "s|HOST_SERVER = '.*'|HOST_SERVER = 'https://$DOMAIN'|g" $OPENALGO_PATH/.env
+if [ "$IS_IP_ADDRESS" = true ]; then
+    sudo sed -i "s|http://127.0.0.1:5000|http://$DOMAIN|g" $OPENALGO_PATH/.env
+    # Explicitly set HOST_SERVER in case the default value didn't match
+    sudo sed -i "s|HOST_SERVER = '.*'|HOST_SERVER = 'http://$DOMAIN'|g" $OPENALGO_PATH/.env
+else
+    sudo sed -i "s|http://127.0.0.1:5000|https://$DOMAIN|g" $OPENALGO_PATH/.env
+    # Explicitly set HOST_SERVER in case the default value didn't match
+    sudo sed -i "s|HOST_SERVER = '.*'|HOST_SERVER = 'https://$DOMAIN'|g" $OPENALGO_PATH/.env
+fi
 sudo sed -i "s|<broker>|$BROKER_NAME|g" $OPENALGO_PATH/.env
 sudo sed -i "s|3daa0403ce2501ee7432b75bf100048e3cf510d63d2754f952e93d88bf07ea84|$APP_KEY|g" $OPENALGO_PATH/.env
 sudo sed -i "s|a25d94718479b170c16278e321ea6c989358bf499a658fd20c90033cef8ce772|$API_KEY_PEPPER|g" $OPENALGO_PATH/.env
@@ -715,7 +744,11 @@ if [ "$DISABLE_SESSION_EXPIRY" = "true" ]; then
 fi
 
 # Update WebSocket URL for production
-sudo sed -i "s|WEBSOCKET_URL='.*'|WEBSOCKET_URL='wss://$DOMAIN/ws'|g" $OPENALGO_PATH/.env
+if [ "$IS_IP_ADDRESS" = true ]; then
+    sudo sed -i "s|WEBSOCKET_URL='.*'|WEBSOCKET_URL='ws://$DOMAIN/ws'|g" $OPENALGO_PATH/.env
+else
+    sudo sed -i "s|WEBSOCKET_URL='.*'|WEBSOCKET_URL='wss://$DOMAIN/ws'|g" $OPENALGO_PATH/.env
+fi
 
 # Update host bindings to allow external connections
 sudo sed -i "s|WEBSOCKET_HOST='127.0.0.1'|WEBSOCKET_HOST='0.0.0.0'|g" $OPENALGO_PATH/.env
@@ -825,23 +858,25 @@ case "$OS_TYPE" in
         ;;
 esac
 
-# Obtain SSL certificate
-log_message "\nObtaining SSL certificate..." "$BLUE"
-if [ "$IS_SUBDOMAIN" = true ]; then
-    sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos --email admin@${DOMAIN#*.}
-else
-    sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --email admin@$DOMAIN
+if [ "$IS_IP_ADDRESS" = false ]; then
+    # Obtain SSL certificate
+    log_message "\nObtaining SSL certificate..." "$BLUE"
+    if [ "$IS_SUBDOMAIN" = true ]; then
+        sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos --email admin@${DOMAIN#*.}
+    else
+        sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --email admin@$DOMAIN
+    fi
+
+    # Check if certificate was obtained (even if auto-install failed)
+    if [ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+        log_message "Failed to obtain SSL certificate" "$RED"
+        exit 1
+    else
+        log_message "SSL certificate obtained successfully" "$GREEN"
+    fi
 fi
 
-# Check if certificate was obtained (even if auto-install failed)
-if [ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
-    log_message "Failed to obtain SSL certificate" "$RED"
-    exit 1
-else
-    log_message "SSL certificate obtained successfully" "$GREEN"
-fi
-
-# Configure final Nginx setup with SSL and socket
+# Configure final Nginx setup
 log_message "\nConfiguring final Nginx setup..." "$BLUE"
 # Remove old config files to ensure clean write (with and without .conf extension)
 sudo rm -f $NGINX_CONFIG_FILE
@@ -850,8 +885,70 @@ if [ "$NGINX_CONFIG_MODE" = "sites" ]; then
     sudo rm -f /etc/nginx/sites-enabled/${DOMAIN}
     sudo rm -f /etc/nginx/sites-enabled/${DOMAIN}.conf
 fi
-# Write the new configuration
-sudo tee $NGINX_CONFIG_FILE > /dev/null << EOL
+
+if [ "$IS_IP_ADDRESS" = true ]; then
+    # Write HTTP-only reverse proxy configuration for IP mode
+    sudo tee $NGINX_CONFIG_FILE > /dev/null << EOL
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $DOMAIN;
+
+    # WebSocket without trailing slash
+    location = /ws {
+        proxy_pass http://127.0.0.1:8765;
+        proxy_http_version 1.1;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+        proxy_buffering off;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$host;
+    }
+
+    # WebSocket with trailing slash
+    location /ws/ {
+        proxy_pass http://127.0.0.1:8765/;
+        proxy_http_version 1.1;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+        proxy_buffering off;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$host;
+    }
+
+    # Main app (Gunicorn UDS)
+    location / {
+        proxy_pass http://unix:$SOCKET_FILE;
+        proxy_http_version 1.1;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_redirect off;
+    }
+}
+EOL
+else
+    # Write HTTPS configuration for domain mode
+    sudo tee $NGINX_CONFIG_FILE > /dev/null << EOL
 server {
     listen 80;
     listen [::]:80;
@@ -971,6 +1068,7 @@ server {
     }
 }
 EOL
+fi
 
 # Recreate symlink for sites-enabled if needed
 if [ "$NGINX_CONFIG_MODE" = "sites" ]; then
@@ -1111,7 +1209,11 @@ log_message "Environment File: $OPENALGO_PATH/.env" "$BLUE"
 log_message "Socket File: $SOCKET_FILE" "$BLUE"
 log_message "Service Name: $SERVICE_NAME" "$BLUE"
 log_message "Nginx Config: $NGINX_CONFIG_FILE" "$BLUE"
-log_message "SSL: Enabled with Let's Encrypt" "$BLUE"
+if [ "$IS_IP_ADDRESS" = true ]; then
+    log_message "SSL: Disabled (IP mode - HTTP only)" "$BLUE"
+else
+    log_message "SSL: Enabled with Let's Encrypt" "$BLUE"
+fi
 if [ "$DISABLE_SESSION_EXPIRY" = "true" ]; then
     log_message "Auto-Logout: Disabled (24/7 crypto market)" "$BLUE"
 else
@@ -1120,7 +1222,11 @@ fi
 log_message "Installation Log: $LOG_FILE" "$BLUE"
 
 log_message "\nNext Steps:" "$YELLOW"
-log_message "1. Visit https://$DOMAIN to access your OpenAlgo instance" "$GREEN"
+if [ "$IS_IP_ADDRESS" = true ]; then
+    log_message "1. Visit http://$DOMAIN to access your OpenAlgo instance" "$GREEN"
+else
+    log_message "1. Visit https://$DOMAIN to access your OpenAlgo instance" "$GREEN"
+fi
 log_message "2. Configure your broker settings in the web interface" "$GREEN"
 log_message "3. Review the logs using: sudo journalctl -u $SERVICE_NAME" "$GREEN"
 log_message "4. Monitor the application status: sudo systemctl status $SERVICE_NAME" "$GREEN"

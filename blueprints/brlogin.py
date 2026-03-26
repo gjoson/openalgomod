@@ -24,6 +24,7 @@ logger = get_logger(__name__)
 BROKER_API_KEY = get_broker_api_key()
 LOGIN_RATE_LIMIT_MIN = get_login_rate_limit_min()
 LOGIN_RATE_LIMIT_HOUR = get_login_rate_limit_hour()
+SINGLE_BROKER = os.getenv("SINGLE_BROKER", "flattrade").strip().lower()
 
 brlogin_bp = Blueprint("brlogin", __name__, url_prefix="/")
 
@@ -37,6 +38,17 @@ def ratelimit_handler(e):
 @limiter.limit(LOGIN_RATE_LIMIT_MIN)
 @limiter.limit(LOGIN_RATE_LIMIT_HOUR)
 def broker_callback(broker, para=None):
+    if broker.strip().lower() != SINGLE_BROKER:
+        logger.warning(
+            f"Blocked callback for broker '{broker}'. Only '{SINGLE_BROKER}' is supported."
+        )
+        return jsonify(
+            {
+                "status": "error",
+                "message": f"Unsupported broker '{broker}'. Only '{SINGLE_BROKER}' is supported.",
+            }
+        ), 400
+
     logger.info(f"Broker callback initiated for: {broker}")
     logger.debug(f"Session contents: {dict(session)}")
     logger.info(f"Session has user key: {'user' in session}")
@@ -537,7 +549,7 @@ def broker_callback(broker, para=None):
             # If the app uses handle_auth_success, call it so the rest of the app updates
             return handle_auth_success(auth_token, session["user"], broker)
         else:
-            return handle_auth_failure(error_message or "Flattrade auth failed", forward_url=forward_url)"
+            return handle_auth_failure(error_message or "Flattrade auth failed", forward_url=forward_url)
 
     elif broker == "kotak":
         logger.debug(f"Kotak broker - The Broker is {broker}")
