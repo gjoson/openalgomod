@@ -32,10 +32,10 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-IMAGE="marketcalls/openalgo:latest"
+IMAGE="${OPENALGO_IMAGE:-marketcalls/openalgo:latest}"
 CONTAINER="openalgo"
 ENV_FILE=".env"
-SAMPLE_ENV_URL="https://raw.githubusercontent.com/marketcalls/openalgo/main/.sample.env"
+SAMPLE_ENV_URL="${OPENALGO_SAMPLE_ENV_URL:-https://raw.githubusercontent.com/marketcalls/openalgo/main/.sample.env}"
 # Use the directory where the script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPENALGO_DIR="$SCRIPT_DIR"

@@ -26,10 +26,18 @@ REM ============================================================================
 setlocal enabledelayedexpansion
 
 REM Configuration
-set IMAGE=marketcalls/openalgo:latest
+if defined OPENALGO_IMAGE (
+    set IMAGE=%OPENALGO_IMAGE%
+) else (
+    set IMAGE=marketcalls/openalgo:latest
+)
 set CONTAINER=openalgo
 set ENV_FILE=.env
-set SAMPLE_ENV_URL=https://raw.githubusercontent.com/marketcalls/openalgo/main/.sample.env
+if defined OPENALGO_SAMPLE_ENV_URL (
+    set SAMPLE_ENV_URL=%OPENALGO_SAMPLE_ENV_URL%
+) else (
+    set SAMPLE_ENV_URL=https://raw.githubusercontent.com/marketcalls/openalgo/main/.sample.env
+)
 REM Use the directory where the script is located
 set OPENALGO_DIR=%~dp0
 REM Remove trailing backslash
