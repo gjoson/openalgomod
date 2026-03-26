@@ -40,6 +40,7 @@ LOGIN_RATE_LIMIT_HOUR = os.getenv("LOGIN_RATE_LIMIT_HOUR", "25 per hour")
 RESET_RATE_LIMIT = os.getenv("RESET_RATE_LIMIT", "15 per hour")  # Password reset rate limit
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
+SINGLE_BROKER = os.getenv("SINGLE_BROKER", "flattrade").strip().lower()
 
 
 @auth_bp.errorhandler(429)
@@ -69,6 +70,21 @@ def get_broker_config():
 
     if not broker_name:
         return jsonify({"status": "error", "message": "Broker not configured"}), 500
+
+    broker_name = broker_name.strip().lower()
+    if broker_name != SINGLE_BROKER:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": (
+                        f"Unsupported broker '{broker_name}' in REDIRECT_URL. "
+                        f"Only '{SINGLE_BROKER}' is supported."
+                    ),
+                }
+            ),
+            500,
+        )
 
     # Return full config only for authenticated users
     if "user" in session:
