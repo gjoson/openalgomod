@@ -34,6 +34,7 @@ logger = get_logger(__name__)
 ph = PasswordHasher()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+SINGLE_BROKER = os.getenv("SINGLE_BROKER", "flattrade").strip().lower()
 
 # Security: Require API_KEY_PEPPER environment variable (fail fast if missing)
 # Pepper must be at least 32 bytes (64 hex characters) for cryptographic security
@@ -574,6 +575,12 @@ def get_broker_name(provided_api_key):
         try:
             auth_obj = Auth.query.filter_by(name=user_id).first()
             if auth_obj and not auth_obj.is_revoked:
+                if (auth_obj.broker or "").strip().lower() != SINGLE_BROKER:
+                    logger.warning(
+                        f"Blocked broker '{auth_obj.broker}' for user_id '{user_id}'. "
+                        f"Only '{SINGLE_BROKER}' is allowed."
+                    )
+                    return None
                 # Cache the broker name
                 broker_cache[provided_api_key] = auth_obj.broker
                 return auth_obj.broker
@@ -613,6 +620,13 @@ def get_auth_token_broker(provided_api_key, include_feed_token=False):
                     del auth_cache[cache_key]
                     logger.warning(f"Cached auth token was revoked for user_id '{user_id}'.")
                     return (None, None, None) if include_feed_token else (None, None)
+                if auth_obj and (auth_obj.broker or "").strip().lower() != SINGLE_BROKER:
+                    del auth_cache[cache_key]
+                    logger.warning(
+                        f"Blocked broker '{auth_obj.broker}' for user_id '{user_id}'. "
+                        f"Only '{SINGLE_BROKER}' is allowed."
+                    )
+                    return (None, None, None) if include_feed_token else (None, None)
                 # Not revoked, return cached result
                 logger.debug(f"Auth token retrieved from cache for user_id: {user_id}")
                 return cached_result
@@ -628,6 +642,12 @@ def get_auth_token_broker(provided_api_key, include_feed_token=False):
         try:
             auth_obj = Auth.query.filter_by(name=user_id).first()
             if auth_obj and not auth_obj.is_revoked:
+                if (auth_obj.broker or "").strip().lower() != SINGLE_BROKER:
+                    logger.warning(
+                        f"Blocked broker '{auth_obj.broker}' for user_id '{user_id}'. "
+                        f"Only '{SINGLE_BROKER}' is allowed."
+                    )
+                    return (None, None, None) if include_feed_token else (None, None)
                 decrypted_token = decrypt_token(auth_obj.auth)
                 if include_feed_token:
                     decrypted_feed_token = (
